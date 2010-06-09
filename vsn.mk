@@ -1,0 +1,2 @@
+APP_NAME=logging
+APP_VSN=0.1

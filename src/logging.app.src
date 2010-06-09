@@ -1,0 +1,10 @@
+{application, @APP_NAME@,
+    [{description, "some description for logging"},
+     {vsn, "@APP_VSN@"},
+     {modules, [@MODULES@]},
+     {registered, []},
+     {applications, [kernel, stdlib, sasl]},
+     {mod, {logging_app, []}},
+     {env, []}
+    ]
+}.
