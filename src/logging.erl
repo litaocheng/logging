@@ -24,6 +24,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, 
         terminate/2, code_change/3]).
 
+-export([valid_level/1, valid_module/1, valid_line/1, valid_message/1]).
+
 -record(state, {
         name,
         level,
@@ -75,7 +77,7 @@ format_default_code() ->
 %% (message)    - the logged message
 %% 
 %% for example:
-%% "(time) - (name) - (message)"
+%% "(localtime) - (name) - (message)"
 compile_format(Fmt) ->
     L = re:split(Fmt, "[()]", [noteol, notempty, trim, notbol, {return, list}]),
     [compile_format_part(P) || P <- L].
@@ -162,7 +164,7 @@ code_change(_Old, State, _Extra) ->
 %%
 %%------------------------------------------------------------------------------
 %% return the logger name
-logger_name(Name) ->
+logger_name(Name) when is_list(Name); is_atom(Name) ->
     list_to_atom(lists:concat([?PREFIX, Name])).
 
 %% return the logger name, the atom must exist
@@ -172,18 +174,28 @@ logger_name_existing(Name) ->
 %%------------------------------------------------------------------------------
 %% validate
 %%------------------------------------------------------------------------------
-valid_name(Name) when is_list(Name); is_binary(Name) -> true;
-valid_name(_) -> false.
+valid_name(Name) when is_atom(Name); is_list(Name) -> true;
+valid_name(_) -> throw({error, invalid_name}).
 
-valid_level(Level) when is_integer(Level) and Level >= 0 -> true;
-valid_level(_) -> {error, invalid_level}. 
+valid_level(Level) when is_integer(Level), Level >= 0 -> true;
+valid_level(_) -> throw({error, invalid_level}). 
+
+valid_module(Mod) when is_atom(Mod) -> true;
+valid_module(Mod) when is_tuple(Mod), is_atom(element(1, Mod)) -> true;
+valid_module(_) -> throw({error, invalid_module}).
+
+valid_line(Line) when is_integer(Line), Line >= 0 -> true;
+valid_line(_) -> throw({error, invalid_line}).
+
+valid_message(Msg) when is_list(Msg); is_binary(Msg) -> true;
+valid_message(_) -> throw({error, invalid_message}).
 
 valid_handler({Mod, _Args}) when is_atom(Mod) -> true;
-valid_handler(_) -> {error, invalid_handler}.
+valid_handler(_) -> throw({error, invalid_handler}).
 
 %% FIXME do more sanity check
 valid_formatter(Formatter) when is_list(Formatter) -> true;
-valid_formatter(_) -> {error, invalid_formatter}.
+valid_formatter(_) -> throw({error, invalid_formatter}).
 
 %%------------------------------------------------------------------------------
 %% defaults 
@@ -405,7 +417,7 @@ now_sec() ->
 
 two_chars(N) when N =< 9 ->
         lists:concat([0, N]);
-two_chars(N) when N =< 31 ->
+two_chars(N) when N =< 99 ->
         N.
 
 
@@ -414,6 +426,82 @@ two_chars(N) when N =< 31 ->
 %%------------------------------------------------------------------------------
 
 -ifdef(EUNIT).
-some_test() ->
-    ?assert(true).
+
+compile_format_test() ->
+    ?assertEqual([
+            {text, []},
+            {#log_record.time, fun do_human_local_time/2},
+            {#log_record.time, fun do_human_universal_time/2},
+            #log_record.name,
+            #log_record.level,
+            {#log_record.level, fun do_level_name/2},
+            #log_record.module,
+            #log_record.lineno,
+            #log_record.pid,
+            #log_record.ospid,
+            #log_record.message],
+            compile_format("(localtime)(universal)(name)(level)(levelname)"
+            "(module)(lineno)(pid)(ospid)(message)")),
+    ?assertEqual(["ok", #log_record.name, "yes"],
+            compile_format("ok(name)yes")),
+
+    ?assertEqual([
+            {text, []},
+            {#log_record.name, fun do_human_local_time/2},
+            " - ",
+            #log_record.name,
+            " - ",
+            #log_record.message],
+            compile_format("(localtime) - (name) - (message)")),
+    ok.
+
+logger_name_test() ->
+    ?assertEqual('logger_root', logger_name("root")),
+    ?assertEqual('logger_root', logger_name_existing("root")),
+    ?assertEqual('logger_root', logger_name(root)),
+    ok.
+
+valid_test() ->
+    ?assert(valid_name(cheng)),
+    %?assert(valid_name("cheng")),
+    %?assertThrow({error, invalid_name}, valid_name(1234)),
+
+    ?assert(valid_level(0)),
+    ?assert(valid_level(1)),
+    ?assertThrow({error, invalid_level}, valid_level(-1)),
+    ?assertThrow({error, invalid_level}, valid_level(level)),
+
+    ?assert(valid_module(test)),
+    ?assert(valid_module('MODULE')),
+    ?assert(valid_module({test, arg})),
+    ?assertThrow({error, invalid_module}, valid_module(-1)),
+    ?assertThrow({error, invalid_module}, valid_module("module")),
+
+    ?assert(valid_line(0)),
+    ?assert(valid_line(1)),
+    ?assertThrow({error, invalid_line}, valid_line(-1)),
+    ?assertThrow({error, invalid_line}, valid_line(line)),
+
+    ?assert(valid_message(<<>>)),
+    ?assert(valid_message(<<"message">>)),
+    ?assert(valid_message("message")),
+    ?assertThrow({error, invalid_message}, valid_message(-1)),
+    ?assertThrow({error, invalid_message}, valid_message(message)),
+
+    ?assert(valid_handler({logging_tty_h, []})),
+    ?assert(valid_handler({logging_tty_h, 10})),
+    ?assertThrow({error, invalid_handler}, valid_handler(module)),
+    
+    ?assert(valid_formatter("(localtime)")),
+    ?assert(valid_formatter("some text (message)")),
+    ?assertThrow({error, invalid_formatter}, valid_formatter(formatter)),
+
+    ok.
+
+human_time_test() ->
+    ?assert(is_list(do_human_local_time(now(), #state{}))),
+    ?assert(is_list(do_human_universal_time(now(), #state{}))),
+    ok.
+
+
 -endif.
