@@ -79,7 +79,10 @@ format_default_code() ->
 %% for example:
 %% "(localtime) - (name) - (message)"
 compile_format(Fmt) ->
-    L = re:split(Fmt, "[()]", [noteol, notempty, trim, notbol, {return, list}]),
+    Bin = iolist_to_binary(Fmt),
+    Captures = match(Bin),
+    L = split_format_str(Bin, Captures),
+    %L = re:split(Fmt, "[()]", [noteol, notempty, trim, notbol, {return, list}]),
     [compile_format_part(P) || P <- L].
     
 %%------------------------------------------------------------------------------
@@ -163,6 +166,63 @@ code_change(_Old, State, _Extra) ->
 %% internal API
 %%
 %%------------------------------------------------------------------------------
+
+%% "(localtime) - (name) - (message)"
+-record(match_state, {
+        level = 0,
+        start = 0,
+        last = 0,
+        list = []
+    }).
+
+match(Str) ->
+    %io:format("***bin is ~s~n", [Str]),
+    match(Str, 0, #match_state{}).
+
+match(<<$(, Rest/binary>>, Pos, State = #match_state{level = Level}) ->
+    State2 = State#match_state{level = Level + 1, start = Pos},
+    match(Rest, Pos+1, State2);
+match(<<$), Rest/binary>>, Pos, 
+        State = #match_state{level = Level, start = Start, list = List}) ->
+    State2 = 
+        State#match_state{level = Level - 1, list = [{Start, Pos+1} | List]},
+    match(Rest, Pos+1, State2);
+match(<<_C, Rest/binary>>, Pos, State) ->
+    match(Rest, Pos+1, State);
+match(<<>>, _Pos, #match_state{list = List}) ->
+    lists:reverse(List).
+
+split_format_str(Bin, Captures) ->
+    io:format("Captures is ~p~n", [Captures]),
+    {_, Parts, Rest} = 
+    lists:foldl(
+        fun({Start, Last}, {Prev, Acc, _PreRest}) ->
+                TextLen = Start - Prev,
+                CaptureLen = Last - Start,
+                <<_:Prev/bytes, Text:TextLen/bytes, 
+                    Capture:CaptureLen/bytes, Rest/binary>> = Bin,
+                Acc1 =
+                if Text =/= <<>> ->
+                        [Text | Acc];
+                    true ->
+                        Acc
+                end,
+                Acc2 =
+                if Capture =/= <<>> ->
+                        [Capture | Acc1];
+                    true ->
+                        Acc1
+                end,
+                {Last, Acc2, Rest}
+        end,
+    {0, [], <<>>},
+    Captures),
+    if Rest =/= <<>> ->
+            lists:reverse([Rest | Parts]);
+        true ->
+            lists:reverse(Parts)
+    end.
+                
 %% return the logger name
 logger_name(Name) when is_list(Name); is_atom(Name) ->
     list_to_atom(lists:concat([?PREFIX, Name])).
@@ -344,27 +404,27 @@ do_handler_terminate(Mod, Args, State) ->
 %% formatter
 %%------------------------------------------------------------------------------
 %% compile the formatter
-compile_format_part("localtime") ->
+compile_format_part(<<"(localtime)">>) ->
     {#log_record.time, fun do_human_local_time/2};
-compile_format_part("universal") ->
+compile_format_part(<<"(universal)">>) ->
     {#log_record.time, fun do_human_universal_time/2};
-compile_format_part("name") ->
+compile_format_part(<<"(name)">>) ->
     #log_record.name;
-compile_format_part("levelno") ->
+compile_format_part(<<"(levelno)">>) ->
     #log_record.level;
-compile_format_part("levelname") ->
+compile_format_part(<<"(levelname)">>) ->
     {#log_record.level, fun do_level_name/2};
-compile_format_part("module") ->
+compile_format_part(<<"(module)">>) ->
     #log_record.module;
-compile_format_part("lineno") ->
+compile_format_part(<<"(lineno)">>) ->
     #log_record.lineno;
-compile_format_part("pid") ->
+compile_format_part(<<"(pid)">>) ->
     #log_record.pid;
-compile_format_part("ospid") ->
+compile_format_part(<<"(ospid)">>) ->
     #log_record.ospid;
-compile_format_part("message") ->
+compile_format_part(<<"(message)">>) ->
     #log_record.message;
-compile_format_part(Other) when is_list(Other) ->
+compile_format_part(Other) when is_binary(Other) ->
     {text, Other}.
 
 format_msg(FormCode, LogRecord, State) ->
@@ -428,29 +488,28 @@ two_chars(N) when N =< 99 ->
 -ifdef(EUNIT).
 
 compile_format_test() ->
-    ?assertEqual([
-            {text, []},
-            {#log_record.time, fun do_human_local_time/2},
-            {#log_record.time, fun do_human_universal_time/2},
+    ?assertMatch([
+            {#log_record.time, _},
+            {#log_record.time, _},
             #log_record.name,
             #log_record.level,
-            {#log_record.level, fun do_level_name/2},
+            {#log_record.level, _},
             #log_record.module,
             #log_record.lineno,
             #log_record.pid,
             #log_record.ospid,
             #log_record.message],
-            compile_format("(localtime)(universal)(name)(level)(levelname)"
+            compile_format("(localtime)(universal)(name)(levelno)(levelname)"
             "(module)(lineno)(pid)(ospid)(message)")),
-    ?assertEqual(["ok", #log_record.name, "yes"],
-            compile_format("ok(name)yes")),
 
-    ?assertEqual([
-            {text, []},
-            {#log_record.name, fun do_human_local_time/2},
-            " - ",
+    ?assertEqual([{text, <<"ok">>}, #log_record.name, {text, <<"yes">>}], 
+        compile_format("ok(name)yes")),
+
+    ?assertMatch([
+            {#log_record.time, _},
+            {text, <<" - ">>},
             #log_record.name,
-            " - ",
+            {text, <<" - ">>},
             #log_record.message],
             compile_format("(localtime) - (name) - (message)")),
     ok.
