@@ -274,8 +274,8 @@ default_level_map() ->
 %%------------------------------------------------------------------------------
 do_update_level(Level, Name, LevelMap) ->
     Fun =
-    fun({L, N}) ->
-            {L, N}
+    fun({L, _N}) ->
+            {L, Name}
     end,
     FunNot =
     fun() ->
@@ -286,7 +286,7 @@ do_update_level(Level, Name, LevelMap) ->
 do_level_name(Level, #state{level_map = LevelMap}) ->
     case lists:keyfind(Level, 1, LevelMap) of
         false ->
-            [?LOGLEVEL_STR, list_to_integer(Level)];
+            lists:concat([?LOGLEVEL_STR, Level]);
         {Level, LevelName} ->
             LevelName
     end.
@@ -560,6 +560,20 @@ valid_test() ->
 human_time_test() ->
     ?assert(is_list(do_human_local_time(now(), #state{}))),
     ?assert(is_list(do_human_universal_time(now(), #state{}))),
+    ok.
+
+level_test() ->
+    ?assertEqual([{1, "level 1"}], do_update_level(1, "level 1", [])),
+    ?assertEqual(default_level_map() ++ [{2, "level 2"}], 
+        do_update_level(2, "level 2", default_level_map())),
+    ?assertEqual({10, "**DEBUG**"}, lists:nth(2, do_update_level(10, "**DEBUG**", default_level_map()))),
+
+    State = #state{level_map = default_level_map()},
+    ?assertEqual("NOTSET", do_level_name(0, State)),
+    ?assertEqual("DEBUG", do_level_name(10, State)),
+    ?assertEqual("LEVEL 11", do_level_name(11, State)),
+    ?assertEqual("LEVEL 211", do_level_name(211, State)),
+
     ok.
 
 

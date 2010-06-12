@@ -11,7 +11,7 @@
 
 -define(PREFIX, 'logger_').
 
--define(LOGLEVEL_STR, <<"loglevel ">>).
+-define(LOGLEVEL_STR, "LEVEL ").
 
 -define(FORMATTER_DEFAULT, "(asctime) - (name) (levelname) - (message)").
 

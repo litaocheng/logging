@@ -8,9 +8,10 @@ test: clean
 	(cd src;$(MAKE) TEST=true EUNIT=true)
 	(erl -pa ./ebin -eval "eunit:test(\"./ebin\", [verbose]), init:stop()")
 
-comm_test:
+comm_test: clean
 	(mkdir -p ./test/log)
-	(erl -s ct_run script_start -DTEST -logdir `pwd`/test/log -include `pwd`/include -pa `pwd`/ebin -cover test/motown.coverspec -dir . -s init stop)
+	(cd src;$(MAKE) TEST=true)
+	(erl -s ct_run script_start -DTEST -logdir `pwd`/test/log -include `pwd`/include -pa `pwd`/ebin -cover test/test.coverspec -dir . -s init stop)
 
 edoc: 
 	(mkdir -p ./edoc)
@@ -21,3 +22,5 @@ tags :
 
 clean:
 	(cd src;$(MAKE) clean)
+	rm -rf ./test/log
+	rm -rf ./test/*.beam
