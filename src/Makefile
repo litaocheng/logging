@@ -7,10 +7,10 @@ DOC_OPTS={dir,\"../edoc\"}
 ERL := erl
 ERLC := $(ERL)c
 
-INCLUDE_DIRS := ../include ./
+INCLUDE_DIRS := ../include 
 INCLUDE_FILES := $(wildcard ../include/*.hrl) $(wildcard ./*.hrl) 
 
-EBIN_DIRS := $(wildcard ../libs/*/ebin)
+EBIN_DIRS := $(wildcard ../libs/*/ebin) ../ebin
 ERLC_FLAGS := -W $(addprefix -I , $(INCLUDE_DIRS)) $(EBIN_DIRS:%=-pa %)
 
 ifdef TEST
