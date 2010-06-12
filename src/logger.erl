@@ -100,7 +100,7 @@ do_log(Level, Mod, Line, Msg) when is_integer(Level), Level >= 0 ->
     logging:valid_module(Mod),
     logging:valid_line(Line),
     logging:valid_message(Msg),
-    gen_server:cast(LoggerName, {log, self(), Level, Mod, Line, Msg}).
+    gen_server:cast(LoggerName, {log, group_leader(), self(), Level, Mod, Line, Msg}).
 
 
 call(Req) ->

@@ -141,8 +141,8 @@ handle_call({get_formatter}, _From, State = #state{format_str = FormStr}) ->
 handle_call(_Msg, _From, State) ->
     {noreply, State}.
 
-handle_cast({log, Pid, Level, Mod, Line, Msg}, State) ->
-    case is_enable(Level, State) of
+handle_cast({log, GL, Pid, Level, Mod, Line, Msg}, State) ->
+    case is_enable(Level, State) and (node(GL) =:= node()) of
         true ->
             do_logging(Level, Pid, Mod, Line, Msg, State);
         false ->
@@ -393,7 +393,7 @@ do_handler_init(Mod, Args, HSL) ->
         {ok, State, hibernate} ->
             {true, ok, [#handler{module = Mod, state = State} | HSL]};
         Other ->
-            {false, Other, HSL}
+            {false, {error, Other}, HSL}
     end.
     
 %% terminate the log handler
