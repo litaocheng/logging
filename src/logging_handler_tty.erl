@@ -7,7 +7,7 @@
 %%% @end
 %%%
 %%%----------------------------------------------------------------------
--module(logging_tty_h).
+-module(logging_handler_tty).
 -author("litaocheng@gmail.com").
 -vsn('0.1').
 -behaviour(logging_handler).
@@ -18,7 +18,7 @@ init(Args) ->
     % should link to user (or group_leader???)
     {ok, Args}.
     
-log(LogRecord, LogBin, State) ->
+log(_LogRecord, LogBin, State) ->
     io:format(standard_io, LogBin),
     {ok, State}.
 

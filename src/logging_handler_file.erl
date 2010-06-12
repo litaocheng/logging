@@ -7,7 +7,7 @@
 %%% @end
 %%%
 %%%----------------------------------------------------------------------
--module(logging_file_h).
+-module(logging_handler_file).
 -author("litaocheng@gmail.com").
 -vsn('0.1').
 -behaviour(logging_handler).
@@ -22,10 +22,10 @@ init(File) ->
             What
     end.
     
-log(LogRecord, LogBin, State = {File, Fd}) ->
+log(_LogRecord, LogBin, State = {_File, Fd}) ->
     Reply = file:write(Fd, LogBin),
     {Reply, State}.
 
-terminate(_Reason, {File, Fd}) ->
+terminate(_Reason, {_File, Fd}) ->
     file:sync(Fd),
     file:close(Fd).

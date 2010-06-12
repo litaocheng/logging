@@ -7,7 +7,7 @@
 %%% @end
 %%%
 %%%----------------------------------------------------------------------
--module(logging_rotate_h).
+-module(logging_handler_rotate).
 -author("litaocheng@gmail.com").
 -vsn('0.1').
 -behaviour(logging_handler).
@@ -62,9 +62,11 @@ terminate(_Reason, #state{fd = Fd}) ->
 %% internal API
 %%
 
-do_rotate(Dir, FileName, MaxFile) ->
-    LastFile = lists:concat([FileName, ".", MaxFile-1]),
-    Files = [F || F <- filelib:wildcard(FileName++"*", Dir), is_valid(F, FileName, MaxFile)],
+do_rotate(Dir, FName, MaxFile) ->
+    %LastFile = lists:concat([FName, ".", MaxFile-1]),
+    FNameLen = length(FName),
+    Files = [F || F <- filelib:wildcard(FName++"*", Dir), 
+        is_valid(F, FName, FNameLen, MaxFile)],
 
     Sorted = [CurLastFile | _] = lists:sort( fun(A, B) -> A > B end, Files),
     lists:foldl(
@@ -78,14 +80,21 @@ do_rotate(Dir, FileName, MaxFile) ->
     ok.
 
 %% filename, filename.1, filename.2, ..., filename.N-1
-is_valid(FileName, FileName, _N) -> true;
-is_valid(FileName ++ "." ++ Suffix, FileName, N) ->
-    try list_to_integer(Suffix) < N
+is_valid(FName, FName, _FNameLen, _N) -> true;
+is_valid(F, _FName, FNameLen, N) ->
+    try lists:nthtail(FNameLen+1, F) of
+        Suffix ->
+            integer_str_valid(Suffix, N)
+    catch 
+        _:_ ->
+            false
+    end.
+
+integer_str_valid(Str, N) ->
+    try list_to_integer(Str) < N
     catch _:_ ->
         false
-    end;
-is_valid(_, _FileName, _N) ->
-    false.
+    end.
 
 open_first_file(Dir, File) ->
     FileFull = filename:join([Dir, File]),
