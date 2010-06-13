@@ -1,6 +1,1 @@
-add logging_tty_h
-add logging_file_h
-add logging_rotate_h
-add logging_syslog_h
-format compile rewrite
 add time format

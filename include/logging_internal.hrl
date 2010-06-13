@@ -13,15 +13,15 @@
 
 -define(LOGLEVEL_STR, "LEVEL ").
 
--define(FORMATTER_DEFAULT, "(asctime) - (name) (levelname) - (message)").
+-define(FORMATTER_DEFAULT, "(universal) - (name) (levelname) - (message)").
 
 %%      Level   Numeric value
--define(CRITICAL,    50).
--define(ERROR,       40).
--define(WARNING,     30).
--define(INFO,        20).
--define(DEBUG,       10).
--define(NOTSET,      0).
+-define(LEVEL_CRITICAL,    50).
+-define(LEVEL_ERROR,       40).
+-define(LEVEL_WARNING,     30).
+-define(LEVEL_INFO,        20).
+-define(LEVEL_DEBUG,       10).
+-define(LEVEL_NOTSET,      0).
 
 %% log handler
 -record(handler, {

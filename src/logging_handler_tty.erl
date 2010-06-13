@@ -19,7 +19,7 @@ init(Args) ->
     {ok, Args}.
     
 log(_LogRecord, LogBin, State) ->
-    io:format(standard_io, LogBin),
+    io:format(standard_io, LogBin, []),
     {ok, State}.
 
 terminate(_Reason, _State) ->

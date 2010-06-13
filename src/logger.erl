@@ -16,30 +16,37 @@
 %% logging interfaces
 -export([debug/3, info/3, warning/3, error/3, critical/3, log/4]).
 %% about level
--export([add_level_name/2, get_level_name/1]).
+-export([get_level/0, set_level/1, add_level_name/2, get_level_name/1]).
 %% about handler
 -export([set_handler/2, add_handler/2, delete_handler/2, all_handlers/0]).
--export([tty/0, logfile/1, rotate/3]).
+-export([tty/0, logfile/1, rotate/4]).
 %% about formatter
 -export([set_formatter/1, get_formatter/0]).
+-export([logger_name/0]).
 
 debug(Mod, Line, Msg) ->
-    catch do_log(?DEBUG, Mod, Line, Msg).
+    catch do_log(?LEVEL_DEBUG, Mod, Line, Msg).
 
 info(Mod, Line, Msg) ->
-    catch do_log(?INFO, Mod, Line, Msg).
+    catch do_log(?LEVEL_INFO, Mod, Line, Msg).
 
 warning(Mod, Line, Msg) ->
-    catch do_log(?WARNING, Mod, Line, Msg).
+    catch do_log(?LEVEL_WARNING, Mod, Line, Msg).
 
 error(Mod, Line, Msg) ->
-    catch do_log(?ERROR, Mod, Line, Msg).
+    catch do_log(?LEVEL_ERROR, Mod, Line, Msg).
 
 critical(Mod, Line, Msg) ->
-    catch do_log(?CRITICAL, Mod, Line, Msg).
+    catch do_log(?LEVEL_CRITICAL, Mod, Line, Msg).
 
 log(Level, Mod, Line, Msg)  ->
     catch do_log(Level, Mod, Line, Msg).
+
+get_level() ->
+    call({get_level}).
+
+set_level(Level) ->
+    call({set_level, Level}).
 
 %% @doc add level with the specified name, if the Level is already exists,
 %% update the level name
@@ -70,15 +77,15 @@ all_handlers() ->
 
 %% @doc set the handler to tty
 tty() ->
-    set_handler(logging_tty_h, []).
+    set_handler(logging_handler_tty, []).
 
 %% @doc set the handler to file mode
 logfile(File) ->
-    set_handler(logging_file_h, File).
+    set_handler(logging_handler_file, File).
 
 %% @doc set the handler to rotate mode 
-rotate(Dir, MaxSize, MaxFile) ->
-    set_handler(logging_rotate_h, {Dir, MaxSize, MaxFile}).
+rotate(Dir, FileName, MaxSize, MaxFile) when is_integer(MaxSize), is_integer(MaxFile) ->
+    set_handler(logging_handler_rotate, {Dir, FileName, MaxSize, MaxFile}).
 
 %% @doc set the formmater for logger
 set_formatter(Form) ->
@@ -87,6 +94,10 @@ set_formatter(Form) ->
 %% @doc get the formatter string for the logger
 get_formatter() ->
     call({get_formatter}).
+
+%% @doc return the logger name
+logger_name() ->
+    LoggerName.
 
     
 %%------------------------------------------------------------------------------
@@ -105,15 +116,3 @@ do_log(Level, Mod, Line, Msg) when is_integer(Level), Level >= 0 ->
 
 call(Req) ->
     gen_server:call(LoggerName, Req).
-
-
-%%------------------------------------------------------------------------------
-%%
-%% EUNIT test
-%%
-%%------------------------------------------------------------------------------
-
--ifdef(EUNIT).
-
-
--endif.

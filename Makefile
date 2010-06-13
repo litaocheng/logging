@@ -4,7 +4,7 @@ SHELL := /bin/bash
 all:
 	(cd src;$(MAKE))
 
-test: clean
+unit_test: clean
 	(cd src;$(MAKE) TEST=true EUNIT=true)
 	(erl -pa ./ebin -eval "eunit:test(\"./ebin\", [verbose]), init:stop()")
 

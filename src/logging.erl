@@ -15,6 +15,7 @@
 -include("logging_internal.hrl").
 
 -export([start/1, start_link/1, start_link/4]).
+-export([stop/1]).
 -export([get_logger/1]).
 
 %% about formatter
@@ -39,24 +40,28 @@
 %% @doc start the logger with name
 -spec start(log_name()) -> {'ok', pid()} | {'error', any()}.
 start(Name) ->
-    gen_server:start({local, logger_name(Name)}, Name, []).
+    gen_server:start({local, logger_name(Name)}, ?MODULE, Name, []).
 
 %% @doc start the logger with name
 -spec start_link(log_name()) -> {'ok', pid()} | {'error', any()}.
 start_link(Name) ->
-    gen_server:start_link({local, logger_name(Name)}, Name, []).
+    gen_server:start_link({local, logger_name(Name)}, ?MODULE, Name, []).
 
 %% @doc start the logger with name and the other arguments
 -spec start_link(log_name(), log_level(), log_handler(), log_formatter()) -> 
     {'ok', pid()} | {'error', any()}.
 start_link(Name, Level, Handler, Formatter) ->
-    gen_server:start_link({local, logger_name(Name)}, {Name, Level, Handler, Formatter}, []).
+    gen_server:start_link({local, logger_name(Name)}, ?MODULE, {Name, Level, Handler, Formatter}, []).
+
+%% @doc stop the logger
+stop(Logger) ->
+    gen_server:call(Logger, stop).
 
 %% @doc return logger
 get_logger(Name) ->
     logger:new(logger_name_existing(Name)).
 
-%% @doc the format is (asctime) - (levelname) - (message)"
+%% @doc the format is (universal) - (levelname) - (message)"
 format_default_str() ->
     ?FORMATTER_DEFAULT.
 
@@ -93,26 +98,47 @@ init({Name, Level, Handler = {Mod, Args}, Formatter}) ->
     valid_level(Level),
     valid_handler(Handler),
     valid_formatter(Formatter),
-    {ok, #state{
+    State =
+    #state{
         name = Name,
         level = Level,
-        hsl = server_add_handler(Mod, Args, []),
         format_code = compile_format(Formatter),
         format_str = Formatter,
         level_map = default_level_map()
-    }};
+    },
+    do_init_hsl(State, Mod, Args);
 init(Name) ->    
     valid_name(Name),
     {Mod, Args} = default_handler(),
-    {ok, #state{
+    State =
+    #state{
         name = Name, 
         level = default_level(), 
-        hsl = server_add_handler(Mod, Args, []),
         format_code = format_default_code(),
         format_str = format_default_str(),
         level_map = default_level_map()
-    }}.
+    },
+    do_init_hsl(State, Mod, Args).
 
+do_init_hsl(State, Mod, Args) ->
+    {Hib, Reply, HSL} = server_add_handler(Mod, Args, []),
+    case Reply of
+        ok ->
+            State2 = State#state{hsl = HSL},
+            case Hib of
+                true ->
+                    {ok, State2, hibernate};
+                false ->
+                    {ok, State2}
+            end;
+        Other ->
+            Other
+    end.
+
+handle_call({get_level}, _From, State = #state{level = Level}) ->
+    {reply, Level, State};
+handle_call({set_level, NewLevel}, _From, State = #state{}) ->
+    {reply, ok, State#state{level = NewLevel}};
 handle_call({add_level_name, Level, Name}, _From, State = #state{level_map = LevelMap}) ->
     LevelMap2 = do_update_level(Level, Name, LevelMap),
     {reply, ok, State#state{level_map = LevelMap2}};
@@ -133,10 +159,14 @@ handle_call({all_handlers}, _From, State = #state{hsl = HSL}) ->
     Reply = server_all_handlers(HSL),
     {reply, Reply, State};
 
-handle_call({set_formatter, FormStr, FormCode}, _From, State) ->
+handle_call({set_formatter, FormStr}, _From, State) ->
+    FormCode = compile_format(FormStr),
     {reply, ok, State#state{format_str = FormStr, format_code = FormCode}};
 handle_call({get_formatter}, _From, State = #state{format_str = FormStr}) ->
     {reply, {ok, FormStr}, State};
+
+handle_call(stop, _From, State) ->
+    {stop, normal, ok, State};
 
 handle_call(_Msg, _From, State) ->
     {noreply, State}.
@@ -193,7 +223,7 @@ match(<<>>, _Pos, #match_state{list = List}) ->
     lists:reverse(List).
 
 split_format_str(Bin, Captures) ->
-    io:format("Captures is ~p~n", [Captures]),
+    %io:format("Captures is ~p~n", [Captures]),
     {_, Parts, Rest} = 
     lists:foldl(
         fun({Start, Last}, {Prev, Acc, _PreRest}) ->
@@ -260,14 +290,15 @@ valid_formatter(_) -> throw({error, invalid_formatter}).
 %%------------------------------------------------------------------------------
 %% defaults 
 %%------------------------------------------------------------------------------
-default_level() -> ?WARNING.
-default_handler() -> {logging_tty_h, []}.
+default_level() -> ?LEVEL_WARNING.
+default_handler() -> {logging_handler_tty, []}.
 default_level_map() -> 
-    [{?NOTSET, "NOTSET"},
-    {?DEBUG, "DEBUG"},
-    {?WARNING, "WARNING"},
-    {?ERROR, "ERROR"},
-    {?CRITICAL, "CRITICAL"}].
+    [{?LEVEL_NOTSET, "NOTSET"},
+    {?LEVEL_DEBUG, "DEBUG"},
+    {?LEVEL_INFO, "INFO"},
+    {?LEVEL_WARNING, "WARNING"},
+    {?LEVEL_ERROR, "ERROR"},
+    {?LEVEL_CRITICAL, "CRITICAL"}].
 
 %%------------------------------------------------------------------------------
 %% levels
@@ -343,7 +374,7 @@ is_enable(_, _) ->
 do_logging(Level, Pid, Mod, Line, Msg, 
         State = #state{name = Name, ospid = OsPid, hsl = HSL, format_code = FormCode}) ->
     LogRecord = #log_record{
-        time = now_sec(),
+        time = now(),
         name = Name,
         level = Level,
         module = Mod,
@@ -411,15 +442,15 @@ compile_format_part(<<"(universal)">>) ->
 compile_format_part(<<"(name)">>) ->
     #log_record.name;
 compile_format_part(<<"(levelno)">>) ->
-    #log_record.level;
+    {#log_record.level, fun any_to_list/1};
 compile_format_part(<<"(levelname)">>) ->
     {#log_record.level, fun do_level_name/2};
 compile_format_part(<<"(module)">>) ->
-    #log_record.module;
+    {#log_record.module, fun any_to_list/1};
 compile_format_part(<<"(lineno)">>) ->
-    #log_record.lineno;
+    {#log_record.lineno, fun any_to_list/1};
 compile_format_part(<<"(pid)">>) ->
-    #log_record.pid;
+    {#log_record.pid, fun any_to_list/1};
 compile_format_part(<<"(ospid)">>) ->
     #log_record.ospid;
 compile_format_part(<<"(message)">>) ->
@@ -432,6 +463,8 @@ format_msg(FormCode, LogRecord, State) ->
         case Code of
             {text, Text} ->
                 Text;
+            {N, Fun} when is_function(Fun, 1) ->
+                Fun(element(N, LogRecord));
             {N, Fun} when is_function(Fun, 2) ->
                 Fun(element(N, LogRecord), State);
             N when is_integer(N) ->
@@ -442,14 +475,14 @@ format_msg(FormCode, LogRecord, State) ->
 do_human_local_time({_MillS, _S, MicroS} = Now, _State) ->
     {{Y, Mon, Day}, {H, M, S}} = calendar:now_to_local_time(Now),
     lists:concat([Y, "-", two_chars(Mon), "-", two_chars(Day),
-           $\s, two_chars(H), ":", two_chars(M), ":", two_chars(S),
-           $\,, (MicroS div 10000000)]).
+           " ", two_chars(H), ":", two_chars(M), ":", two_chars(S),
+           ",", (MicroS div 1000)]).
 
 do_human_universal_time({_MillS, _S, MicroS} = Now, _State) ->
     {{Y, Mon, Day}, {H, M, S}} = calendar:now_to_universal_time(Now),
     lists:concat([Y, "-", two_chars(Mon), "-", two_chars(Day),
-           $\s, two_chars(H), ":", two_chars(M), ":", two_chars(S),
-           $\,, (MicroS div 10000000)]).
+           " ", two_chars(H), ":", two_chars(M), ":", two_chars(S),
+           ",", (MicroS div 1000)]).
 
 %%------------------------------------------------------------------------------
 %% misc functions
@@ -470,16 +503,21 @@ keyupdate3(Key, Pos, [H|Tail], Fun, FunNot) ->
 keyupdate3(_Key, _Pos, [], _Fun, FunNot) -> % not found
     FunNot().
 
-%% return the now in seconds
-now_sec() ->
-    {Mega, Sec, Micro} = erlang:now(),
-    Mega * 1000000 + Sec + Micro div 1000000.
-
 two_chars(N) when N =< 9 ->
         lists:concat([0, N]);
 two_chars(N) when N =< 99 ->
         N.
 
+any_to_list(V) when is_list(V) ->
+    V;                                                                                                  
+any_to_list(V) when is_atom(V) -> 
+    atom_to_list(V);
+any_to_list(V) when is_binary(V) ->
+    binary_to_list(V);
+any_to_list(V) when is_integer(V) ->
+    integer_to_list(V);
+any_to_list(V) when is_pid(V) ->
+    pid_to_list(V).
 
 %%------------------------------------------------------------------------------
 %% EUNIT test
@@ -492,11 +530,11 @@ compile_format_test() ->
             {#log_record.time, _},
             {#log_record.time, _},
             #log_record.name,
-            #log_record.level,
             {#log_record.level, _},
-            #log_record.module,
-            #log_record.lineno,
-            #log_record.pid,
+            {#log_record.level, _},
+            {#log_record.module, _},
+            {#log_record.lineno, _},
+            {#log_record.pid, _},
             #log_record.ospid,
             #log_record.message],
             compile_format("(localtime)(universal)(name)(levelno)(levelname)"
@@ -571,6 +609,10 @@ level_test() ->
     State = #state{level_map = default_level_map()},
     ?assertEqual("NOTSET", do_level_name(0, State)),
     ?assertEqual("DEBUG", do_level_name(10, State)),
+    ?assertEqual("INFO", do_level_name(20, State)),
+    ?assertEqual("WARNING", do_level_name(30, State)),
+    ?assertEqual("ERROR", do_level_name(40, State)),
+    ?assertEqual("CRITICAL", do_level_name(50, State)),
     ?assertEqual("LEVEL 11", do_level_name(11, State)),
     ?assertEqual("LEVEL 211", do_level_name(211, State)),
 
