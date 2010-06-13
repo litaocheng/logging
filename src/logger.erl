@@ -80,11 +80,13 @@ tty() ->
     set_handler(logging_handler_tty, []).
 
 %% @doc set the handler to file mode
-logfile(File) ->
+logfile(File) when is_list(File) ->
     set_handler(logging_handler_file, File).
 
 %% @doc set the handler to rotate mode 
-rotate(Dir, FileName, MaxSize, MaxFile) when is_integer(MaxSize), is_integer(MaxFile) ->
+rotate(Dir, FileName, MaxSize, MaxFile) when is_integer(MaxSize), is_integer(MaxFile),
+                    MaxSize >= 1024, MaxFile > 0,
+                    is_list(Dir), is_list(FileName)  ->
     set_handler(logging_handler_rotate, {Dir, FileName, MaxSize, MaxFile}).
 
 %% @doc set the formmater for logger

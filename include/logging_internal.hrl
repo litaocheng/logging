@@ -13,7 +13,7 @@
 
 -define(LOGLEVEL_STR, "LEVEL ").
 
--define(FORMATTER_DEFAULT, "(universal) - (name) (levelname) - (message)").
+-define(FORMATTER_DEFAULT, "(universal) - (name) (levelname) - (message)\n").
 
 %%      Level   Numeric value
 -define(LEVEL_CRITICAL,    50).

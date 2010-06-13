@@ -12,10 +12,13 @@
         V
     end()).
 
-suite() -> [].  
+suite() -> [
+    {timetrap,{minutes,60}}
+    ].  
 
 init_per_suite(Config) ->
     code:add_path("../ebin"),
+    os:cmd("rm -rf /tmp/test_rotate*"),
     Config.
 
 end_per_suite(_Config) ->
@@ -32,8 +35,9 @@ all() ->
         test_tty,
         test_formatter,
         test_level,
-        %test_file,
-        %test_rotate,
+        test_file,
+        test_rotate_base,
+        test_rotate_more,
         test_dummy
     ].
 
@@ -121,7 +125,6 @@ test_level(_Config) ->
 
     ok = Logger:add_level_name(?LEVEL_DEBUG, "*DEBUG*"),
     "*DEBUG*" = Logger:get_level_name(?LEVEL_DEBUG),
-
     ok = Logger:add_level_name(100, "GAME OVER"),
     "GAME OVER" = Logger:get_level_name(100),
 
@@ -135,30 +138,63 @@ test_level(_Config) ->
     logging:stop(Logger:logger_name()),
     ok.
 
-
-
 test_file(_Config) ->
-    {ok, _} = logging:start("file"),
-    Logger = logging:get_logger("file"),
-    do_basic_logging(Logger),
+    Formatter = "(universal) - (name) - (levelno) (levelname) - (message)\n",
+    {ok, _} = logging:start("test_file", ?LEVEL_NOTSET, {logging_handler_file, "test_file.log"}, Formatter),
+    Logger = logging:get_logger("test_file"),
+
+    ?DEBUG("logging 1", []),
+    ?INFO("logging 1", []),
+    ?WARNING("logging 1", []),
+    ?ERROR("logging 1", []),
+    ?CRITICAL("logging 1", []),
+    ?LOGGING(100, "logging 1", []),
+
+    logging:stop(Logger:logger_name()),
+    ok.
+
+-define(DO_LOGGING, 
+        ?DEBUG("logging ~b", [N]),
+        ?INFO("logging ~b", [N]),
+        ?WARNING("logging ~b", [N]),
+        ?ERROR("logging ~b", [N]),
+        ?CRITICAL("logging ~b", [N]),
+        ?LOGGING(100, "logging ~b", [N])
+        ).
+
+test_rotate_base(_Config) ->
+    Formatter = "(name) - (levelno) (levelname) - (message)\n",
+    Handler = {logging_handler_rotate, {"/tmp/test_rotate_1024_10", "my.log", 1024, 10}},
+    {ok, _} = logging:start("test_rotate_base", ?LEVEL_NOTSET, Handler, Formatter),
+    Logger = logging:get_logger("test_rotate_base"),
+
+    [begin
+        ?DO_LOGGING
+    end || N <- lists:seq(1, 100)],
+    logging:stop(Logger:logger_name()),
+    ok.
+
+test_rotate_more(_Config) ->
+    Formatter = "(name) - (levelno) (levelname) - (message)\n",
+    Size = 25452,
+    Handler = {logging_handler_rotate, {"/tmp/test_rotate_50000_1", "my.log", 50000, 1}},
+    {ok, _} = logging:start("test_rotate_more", ?LEVEL_NOTSET, Handler, Formatter),
+    Logger = logging:get_logger("test_rotate_more"),
+
+    [begin
+        ?DO_LOGGING
+    end || N <- lists:seq(1, 100)],
+    
+    Logger:set_handler(logging_handler_rotate, {"/tmp/test_rotate_3000_50", "my.log", 3000, 50}),
+    [begin
+        ?DO_LOGGING
+    end || N <- lists:seq(1, 100)],
     logging:stop(Logger:logger_name()),
 
+    Size = 
+    lists:sum(
+        [filelib:file_size(F) || F <- filelib:wildcard("/tmp/test_rotate_50000_1/*")]),
+    Size = 
+    lists:sum(
+        [filelib:file_size(F) || F <- filelib:wildcard("/tmp/test_rotate_3000_50/*")]),
     ok.
-
-test_rotate(_Config) ->
-    {ok, _} = logging:start("rotate"),
-    Logger = logging:get_logger("rotate"),
-    do_basic_logging(Logger),
-    logging:stop(Logger:logger_name()),
-
-    ok.
-
-do_basic_logging(Logger) ->
-    Logger:debug(?MODULE, ?LINE, "logging debug"),
-    Logger:info(?MODULE, ?LINE, "logging info"),
-    Logger:warning(?MODULE, ?LINE, "logging warning"),
-    Logger:error(?MODULE, ?LINE, "logging error"),
-    Logger:critical(?MODULE, ?LINE, "logging critical"),
-    Logger:log(25, ?MODULE, ?LINE, "logging 25"),
-    ok.
-

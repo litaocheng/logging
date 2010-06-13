@@ -14,7 +14,7 @@
 -include("logging.hrl").
 -include("logging_internal.hrl").
 
--export([start/1, start_link/1, start_link/4]).
+-export([start/1, start/4, start_link/1, start_link/4]).
 -export([stop/1]).
 -export([get_logger/1]).
 
@@ -42,6 +42,13 @@
 start(Name) ->
     gen_server:start({local, logger_name(Name)}, ?MODULE, Name, []).
 
+%% @doc start the logger with name and the other arguments
+-spec start(log_name(), log_level(), log_handler(), log_formatter()) -> 
+    {'ok', pid()} | {'error', any()}.
+start(Name, Level, Handler, Formatter) ->
+    gen_server:start({local, logger_name(Name)}, ?MODULE, 
+            {Name, Level, Handler, Formatter}, []).
+
 %% @doc start the logger with name
 -spec start_link(log_name()) -> {'ok', pid()} | {'error', any()}.
 start_link(Name) ->
@@ -51,7 +58,8 @@ start_link(Name) ->
 -spec start_link(log_name(), log_level(), log_handler(), log_formatter()) -> 
     {'ok', pid()} | {'error', any()}.
 start_link(Name, Level, Handler, Formatter) ->
-    gen_server:start_link({local, logger_name(Name)}, ?MODULE, {Name, Level, Handler, Formatter}, []).
+    gen_server:start_link({local, logger_name(Name)}, ?MODULE, 
+            {Name, Level, Handler, Formatter}, []).
 
 %% @doc stop the logger
 stop(Logger) ->
@@ -132,7 +140,7 @@ do_init_hsl(State, Mod, Args) ->
                     {ok, State2}
             end;
         Other ->
-            Other
+            {stop, Other}
     end.
 
 handle_call({get_level}, _From, State = #state{level = Level}) ->
@@ -148,10 +156,10 @@ handle_call({get_level_name, Level}, _From, State) ->
 
 handle_call({set_handler, Mod, Args}, _From, State = #state{hsl = HSL}) ->
     {Hib, Reply, HSL2} = server_set_handler(Mod, Args, HSL),
-    handler_reply(Hib, Reply, HSL2, State);
+    handle_call_reply(Hib, Reply, HSL2, State);
 handle_call({add_handler, Mod, Args}, _From, State = #state{hsl = HSL}) ->
     {Hib, Reply, HSL2} = server_add_handler(Mod, Args, HSL),
-    handler_reply(Hib, Reply, HSL2, State);
+    handle_call_reply(Hib, Reply, HSL2, State);
 handle_call({delete_handler, Mod, Args}, _From, State = #state{hsl = HSL}) ->
     {Reply, HSL2} = server_delete_handler(Mod, Args, HSL),
     {reply, Reply, State#state{hsl = HSL2}};
@@ -174,11 +182,11 @@ handle_call(_Msg, _From, State) ->
 handle_cast({log, GL, Pid, Level, Mod, Line, Msg}, State) ->
     case is_enable(Level, State) and (node(GL) =:= node()) of
         true ->
-            do_logging(Level, Pid, Mod, Line, Msg, State);
+            {Hib, HSL} = do_logging(Level, Pid, Mod, Line, Msg, State),
+            handle_cast_reply(Hib, HSL, State);
         false ->
-            ok
-    end,
-    {noreply, State};
+            {noreply, State}
+    end;
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -333,7 +341,7 @@ server_set_handler(Mod, Args, HSL) ->
     end || #handler{module = M, state = S} <- HSL],
     
     % set up the new handler
-    do_handler_init(Mod, Args, HSL).
+    do_handler_init(Mod, Args, []).
 
 server_add_handler(Mod, Args, HSL) ->
     % set up the new handler
@@ -359,10 +367,16 @@ split(_, [], _) ->
 server_all_handlers(HSL) ->
     [Mod || #handler{module = Mod} <- HSL].
 
-handler_reply(true, Reply, HSL, State) ->
+handle_call_reply(true, Reply, HSL, State) ->
     {reply, Reply, State#state{hsl = HSL}, hibernate};
-handler_reply(false, Reply, HSL, State) ->
+handle_call_reply(false, Reply, HSL, State) ->
     {reply, Reply, State#state{hsl = HSL}}.
+
+handle_cast_reply(true, HSL, State) ->
+    {noreply, State#state{hsl = HSL}, hibernate};
+handle_cast_reply(false, HSL, State) ->
+    {noreply, State#state{hsl = HSL}}.
+
 
 %% logging is enabled?
 is_enable(Level, #state{level = Allowed}) when Level >= Allowed ->
@@ -423,6 +437,8 @@ do_handler_init(Mod, Args, HSL) ->
             {false, ok, [#handler{module = Mod, state = State} | HSL]};
         {ok, State, hibernate} ->
             {true, ok, [#handler{module = Mod, state = State} | HSL]};
+        {error, Reason} ->
+            {false, {error, Reason}, HSL};
         Other ->
             {false, {error, Other}, HSL}
     end.

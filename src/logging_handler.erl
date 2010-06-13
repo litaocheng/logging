@@ -35,7 +35,7 @@ not_use() ->
 
 %% @doc init callback
 -spec init(any()) ->
-    {'ok', any()} | {'ok', any(), hibernate} | any().
+    {'ok', any()} | {'ok', any(), hibernate} | {'error', any()} | any().
 init(_Args) ->
     {ok, []}.
 

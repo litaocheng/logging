@@ -6,12 +6,12 @@ all:
 
 unit_test: clean
 	(cd src;$(MAKE) TEST=true EUNIT=true)
-	(erl -pa ./ebin -eval "eunit:test(\"./ebin\", [verbose]), init:stop()")
+	(erl -pa ./ebin -noshell -eval "eunit:test(\"./ebin\", []), init:stop()")
 
 comm_test: clean
 	(mkdir -p ./test/log)
 	(cd src;$(MAKE) TEST=true)
-	(erl -s ct_run script_start -DTEST -logdir `pwd`/test/log -include `pwd`/include -pa `pwd`/ebin -cover test/test.coverspec -dir . -s init stop)
+	(erl -noshell -s ct_run script_start -DTEST -logdir `pwd`/test/log -include `pwd`/include -pa `pwd`/ebin -cover test/test.coverspec -dir . -s init stop)
 
 edoc: 
 	(mkdir -p ./edoc)
