@@ -1,3 +1,2 @@
-update the readme
-add some macros
-add time format
+add one header file(hrl) defines some macros for log
+add the loglevel setting module, use can dynamic change the loglevel
